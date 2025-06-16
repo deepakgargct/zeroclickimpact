@@ -320,14 +320,18 @@ def main():
                                                   help="Minimum zero-click score to be considered")
     
     # Site selection
-    st.subheader("🌐 Select GSC Property")
-    sites = get_gsc_sites(service)
-    
-    if not sites:
-        st.error("No GSC properties found. Make sure you have access to at least one property.")
-        return
-    
-    selected_site = st.selectbox("Choose a property:", sites)
+  st.subheader("🌐 Select GSC Property")
+sites = get_gsc_sites(service)
+
+if not sites:
+    st.error("No GSC properties found. Make sure you have access to at least one property.")
+    return
+
+# Persist selection across reruns and list changes
+if "selected_site" not in st.session_state or st.session_state.selected_site not in sites:
+    st.session_state.selected_site = sites[0] if sites else None
+
+selected_site = st.selectbox("Choose a property:", sites, key="selected_site")
     
     # Date range selection
     st.subheader("📅 Select Date Range")
