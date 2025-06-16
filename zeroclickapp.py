@@ -16,14 +16,9 @@ import time
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
 
 def get_redirect_uri():
-    """Get the appropriate redirect URI based on environment"""
-    # Try to detect if we're on Streamlit Cloud
-    if 'streamlit.app' in st.get_option('server.baseUrlPath') or 'streamlit.app' in st.get_option('server.headless'):
-        # For Streamlit Cloud, use the app URL
-        return "https://your-app-name.streamlit.app"
-    else:
-        # For local development
-        return "urn:ietf:wg:oauth:2.0:oob"  # Out-of-band flow
+    """Get the appropriate redirect URI - always use out-of-band for simplicity"""
+    # Use out-of-band flow for all environments - works everywhere
+    return "urn:ietf:wg:oauth:2.0:oob"
 
 CLIENT_CONFIG = {
     "web": {
@@ -89,17 +84,14 @@ def authenticate_gsc():
     if st.button("🔗 Generate Authentication URL", type="primary"):
         try:
             flow = Flow.from_client_config(CLIENT_CONFIG, SCOPES)
-            flow.redirect_uri = get_redirect_uri()
+            flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
             
             # Use out-of-band flow for better compatibility
-            if get_redirect_uri() == "urn:ietf:wg:oauth:2.0:oob":
-                auth_url, _ = flow.authorization_url(
-                    prompt='consent',
-                    access_type='offline',
-                    include_granted_scopes='true'
-                )
-            else:
-                auth_url, _ = flow.authorization_url(prompt='consent')
+            auth_url, _ = flow.authorization_url(
+                prompt='consent',
+                access_type='offline',
+                include_granted_scopes='true'
+            )
             
             st.markdown(f"""
             ### Step 1: Authorize Access
@@ -284,7 +276,7 @@ def main():
                - Go to APIs & Services → Credentials
                - Click "Create Credentials" → "OAuth 2.0 Client ID"
                - Choose "Web application"
-               - Add `http://localhost:8501` to authorized redirect URIs
+               - **Important**: No redirect URI needed for this app (uses out-of-band flow)
                - Copy Client ID and Client Secret
             
             4. **Configure Streamlit Secrets** (recommended):
@@ -294,8 +286,15 @@ def main():
                client_id = "your-client-id"
                client_secret = "your-client-secret"
                ```
+               - For Streamlit Cloud: Add via the app settings → Secrets
             
             5. **Alternative**: Enter credentials in the sidebar
+            
+            ### 🔧 Troubleshooting:
+            - Make sure you have access to at least one Google Search Console property
+            - The authorization code is usually a long string starting with "4/"
+            - If authentication fails, try generating a new authorization URL
+            - Ensure your Google Cloud project has the Search Console API enabled
             """)
         return
     
