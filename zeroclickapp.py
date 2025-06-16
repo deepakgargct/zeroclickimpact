@@ -15,18 +15,12 @@ import time
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
 
-def get_redirect_uri():
-    """Get the appropriate redirect URI - always use out-of-band for simplicity"""
-    # Use out-of-band flow for all environments - works everywhere
-    return "urn:ietf:wg:oauth:2.0:oob"
-
 CLIENT_CONFIG = {
-    "web": {
+    "installed": {  # Changed from "web" to "installed" for desktop app flow
         "client_id": "",
         "client_secret": "",
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": []
+        "token_uri": "https://oauth2.googleapis.com/token"
     }
 }
 
@@ -48,9 +42,8 @@ def setup_oauth_config():
                                             help="Get from Google Cloud Console")
     
     if client_id and client_secret:
-        CLIENT_CONFIG["web"]["client_id"] = client_id
-        CLIENT_CONFIG["web"]["client_secret"] = client_secret
-        CLIENT_CONFIG["web"]["redirect_uris"] = [get_redirect_uri()]
+        CLIENT_CONFIG["installed"]["client_id"] = client_id
+        CLIENT_CONFIG["installed"]["client_secret"] = client_secret
         return True
     return False
 
@@ -75,7 +68,7 @@ def get_gsc_service():
         return None
 
 def authenticate_gsc():
-    """Handle GSC authentication flow using out-of-band method"""
+    """Handle GSC authentication flow using desktop application flow"""
     if not setup_oauth_config():
         return None
     
@@ -84,13 +77,12 @@ def authenticate_gsc():
     if st.button("🔗 Generate Authentication URL", type="primary"):
         try:
             flow = Flow.from_client_config(CLIENT_CONFIG, SCOPES)
-            flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
+            flow.redirect_uri = 'urn:ietf:wg:oauth:2.0:oob'
             
-            # Use out-of-band flow for better compatibility
+            # Generate authorization URL
             auth_url, _ = flow.authorization_url(
                 prompt='consent',
-                access_type='offline',
-                include_granted_scopes='true'
+                access_type='offline'
             )
             
             st.markdown(f"""
@@ -100,20 +92,24 @@ def authenticate_gsc():
             **[🔗 Click here to authorize GSC access]({auth_url})**
             
             ### Step 2: Copy Authorization Code
-            After authorizing, Google will show you an authorization code. Copy it and paste it below.
+            After authorizing, Google will display an authorization code. Copy the entire code and paste it below.
+            
+            *Note: The code will look something like: `4/0AfJohXn...` (it's usually quite long)*
             """)
             
             st.session_state['oauth_flow'] = flow
             
         except Exception as e:
             st.error(f"Error generating auth URL: {str(e)}")
+            st.error("Make sure you created a 'Desktop Application' OAuth client, not 'Web Application'")
     
     # Show input for authorization code if flow is initialized
     if 'oauth_flow' in st.session_state:
-        auth_code = st.text_input(
+        auth_code = st.text_area(
             "📋 Paste the authorization code here:",
-            placeholder="Paste the code from Google here...",
-            help="After clicking the authorization link, Google will provide a code. Copy and paste it here."
+            placeholder="4/0AfJohXn...",
+            help="Paste the complete authorization code from Google. It should start with '4/' and be quite long.",
+            height=100
         )
         
         if auth_code and st.button("✅ Complete Authentication"):
@@ -134,7 +130,10 @@ def authenticate_gsc():
                 
             except Exception as e:
                 st.error(f"Authentication error: {str(e)}")
-                st.error("Please make sure you copied the complete authorization code.")
+                if "invalid_grant" in str(e):
+                    st.error("The authorization code may have expired. Please generate a new one.")
+                else:
+                    st.error("Please make sure you copied the complete authorization code.")
     
     return None
 
@@ -275,8 +274,7 @@ def main():
             3. **Create OAuth 2.0 Credentials**:
                - Go to APIs & Services → Credentials
                - Click "Create Credentials" → "OAuth 2.0 Client ID"
-               - Choose "Web application"
-               - **Important**: No redirect URI needed for this app (uses out-of-band flow)
+               - **Important**: Choose "Desktop Application" (NOT Web Application)
                - Copy Client ID and Client Secret
             
             4. **Configure Streamlit Secrets** (recommended):
@@ -291,6 +289,8 @@ def main():
             5. **Alternative**: Enter credentials in the sidebar
             
             ### 🔧 Troubleshooting:
+            - **redirect_uri_mismatch error**: Make sure you created a "Desktop Application" OAuth client
+            - **invalid_grant error**: The authorization code expired, generate a new one
             - Make sure you have access to at least one Google Search Console property
             - The authorization code is usually a long string starting with "4/"
             - If authentication fails, try generating a new authorization URL
