@@ -3,12 +3,13 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
-from datetime import datetime, timedelta
 import json
+from datetime import datetime, timedelta
 import time
 
 # Configuration
@@ -75,30 +76,63 @@ def authenticate_gsc():
     
     if st.button("🔗 Generate Authentication URL", type="primary"):
         try:
-            flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)
+            flow = Flow.from_client_config(CLIENT_CONFIG, SCOPES)
             flow.redirect_uri = 'urn:ietf:wg:oauth:2.0:oob'
-            auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
-            st.markdown(f"### Step 1: Authorize Access [🔗 Click here]({auth_url})")
+            
+            # Generate authorization URL
+            auth_url, _ = flow.authorization_url(
+                prompt='consent',
+                access_type='offline'
+            )
+            
+            st.markdown(f"""
+            ### Step 1: Authorize Access
+            Click the link below to authorize access to your Google Search Console:
+            
+            **[🔗 Click here to authorize GSC access]({auth_url})**
+            
+            ### Step 2: Copy Authorization Code
+            After authorizing, Google will display an authorization code. Copy the entire code and paste it below.
+            
+            *Note: The code will look something like: 4/0AfJohXn... (it's usually quite long)*""")
+            
             st.session_state['oauth_flow'] = flow
             
         except Exception as e:
             st.error(f"Error generating auth URL: {str(e)}")
+            st.error("Make sure you created a 'Desktop Application' OAuth client, not 'Web Application'")
     
+    # Show input for authorization code if flow is initialized
     if 'oauth_flow' in st.session_state:
-        auth_code = st.text_area("📋 Paste the authorization code here:")
+        auth_code = st.text_area(
+            "📋 Paste the authorization code here:",
+            placeholder="4/0AfJohXn...",
+            help="Paste the complete authorization code from Google. It should start with '4/' and be quite long.",
+            height=100
+        )
         
         if auth_code and st.button("✅ Complete Authentication"):
             try:
                 flow = st.session_state['oauth_flow']
                 flow.fetch_token(code=auth_code.strip())
+                
+                # Store credentials
                 st.session_state['gsc_credentials'] = json.loads(flow.credentials.to_json())
+                
+                # Clean up
                 del st.session_state['oauth_flow']
+                
                 st.success("✅ Successfully connected to Google Search Console!")
                 st.balloons()
                 time.sleep(2)
                 st.rerun()
+                
             except Exception as e:
                 st.error(f"Authentication error: {str(e)}")
+                if "invalid_grant" in str(e):
+                    st.error("The authorization code may have expired. Please generate a new one.")
+                else:
+                    st.error("Please make sure you copied the complete authorization code.")
     
     return None
 
@@ -175,7 +209,10 @@ def identify_zero_click_keywords(df, min_impressions, max_ctr, min_zero_click_sc
 
 def create_visualizations(df, zero_click_df):
     """Create visualizations for the data"""
+    
+    # Check if df is empty, and return None for the figures
     if df.empty:
+        st.warning("Data is empty. No visualizations will be created.")
         return None, None, None
     
     # CTR vs Impressions scatter plot
@@ -184,8 +221,12 @@ def create_visualizations(df, zero_click_df):
                      title='CTR vs Impressions',
                      labels={'CTR': 'Click-Through Rate (%)', 'Impressions': 'Impressions'})
     
-    if fig1 is not None:  # Ensure fig1 is a valid Plotly figure
-        fig1.update_xaxis(type="log")
+    if fig1:  # Ensure fig1 is a valid Plotly figure
+        try:
+            fig1.update_xaxis(type="log")
+        except Exception as e:
+            st.error(f"Error updating x-axis for fig1: {e}")
+            return None, None, None
     
     # Zero-click score distribution
     fig2 = px.histogram(df, x='Zero_Click_Score', 
@@ -203,50 +244,57 @@ def create_visualizations(df, zero_click_df):
     else:
         fig3 = None
     
+    # Debug output
+    st.write("Visualization Debug:")
+    st.write(f"fig1: {fig1 is not None}")
+    st.write(f"fig2: {fig2 is not None}")
+    st.write(f"fig3: {fig3 is not None}")
+    
     return fig1, fig2, fig3
 
 def main():
-    st.set_page_config(page_title="GSC Zero-Click Keywords Filter", 
-                      page_icon="🔍", 
-                      layout="wide")
+    """Main app flow"""
+    st.set_page_config(page_title="Zero Click Impact", layout="wide")
     
-    st.title("🔍 GSC Zero-Click Keywords Filter")
-    st.markdown("Connect to Google Search Console API to identify potential zero-click keywords")
+    # Authenticate and setup GSC API
+    service = authenticate_gsc()
     
-    # Initialize session state
-    if 'authenticated' not in st.session_state:
-        st.session_state['authenticated'] = False
-    
-    # Authentication section
-    service = get_gsc_service()
-    
-    if service is None:
-        authenticate_gsc()
-    else:
-        # Let the user pick a GSC site
-        site_url = st.selectbox("Select your GSC Property", get_gsc_sites(service))
-        start_date = st.date_input("Start Date", datetime.today() - timedelta(days=30))
-        end_date = st.date_input("End Date", datetime.today())
+    if service:
+        sites = get_gsc_sites(service)
         
+        if not sites:
+            st.warning("No GSC properties found.")
+            return
+        
+        # Select site
+        site_url = st.selectbox("Select GSC Property", sites)
+        
+        # Date input
+        today = datetime.today()
+        start_date = st.date_input("Start Date", today - timedelta(days=30))
+        end_date = st.date_input("End Date", today)
+        
+        # Fetch GSC Data
         df = fetch_gsc_data(service, site_url, start_date, end_date)
+        
+        if df.empty:
+            st.warning("No data to display.")
+            return
+        
+        # Calculate Zero-Click Metrics
         df = calculate_zero_click_metrics(df)
         
-        # Set filter values (can adjust this as per your requirements)
-        min_impressions = st.slider("Minimum Impressions", 1000, 100000, 5000)
-        max_ctr = st.slider("Maximum CTR (%)", 0.01, 10.0, 1.0)
-        min_zero_click_score = st.slider("Minimum Zero-Click Score (%)", 0, 100, 50)
+        # Filter zero-click keywords
+        zero_click_df = identify_zero_click_keywords(df, min_impressions=100, max_ctr=0.5, min_zero_click_score=50)
         
-        zero_click_df = identify_zero_click_keywords(df, min_impressions, max_ctr, min_zero_click_score)
-        
-        # Create visualizations
+        # Create and display visualizations
         fig1, fig2, fig3 = create_visualizations(df, zero_click_df)
         
+        # Display the visualizations
         if fig1:
             st.plotly_chart(fig1, use_container_width=True)
-        
         if fig2:
             st.plotly_chart(fig2, use_container_width=True)
-        
         if fig3:
             st.plotly_chart(fig3, use_container_width=True)
 
