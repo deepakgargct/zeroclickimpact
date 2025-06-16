@@ -14,13 +14,24 @@ import time
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
+
+def get_redirect_uri():
+    """Get the appropriate redirect URI based on environment"""
+    # Try to detect if we're on Streamlit Cloud
+    if 'streamlit.app' in st.get_option('server.baseUrlPath') or 'streamlit.app' in st.get_option('server.headless'):
+        # For Streamlit Cloud, use the app URL
+        return "https://your-app-name.streamlit.app"
+    else:
+        # For local development
+        return "urn:ietf:wg:oauth:2.0:oob"  # Out-of-band flow
+
 CLIENT_CONFIG = {
     "web": {
         "client_id": "",
         "client_secret": "",
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": ["http://localhost:8501"]
+        "redirect_uris": []
     }
 }
 
@@ -44,6 +55,7 @@ def setup_oauth_config():
     if client_id and client_secret:
         CLIENT_CONFIG["web"]["client_id"] = client_id
         CLIENT_CONFIG["web"]["client_secret"] = client_secret
+        CLIENT_CONFIG["web"]["redirect_uris"] = [get_redirect_uri()]
         return True
     return False
 
@@ -68,28 +80,69 @@ def get_gsc_service():
         return None
 
 def authenticate_gsc():
-    """Handle GSC authentication flow"""
+    """Handle GSC authentication flow using out-of-band method"""
     if not setup_oauth_config():
         return None
     
-    if st.button("🔗 Connect to Google Search Console"):
+    st.subheader("🔗 Google Search Console Authentication")
+    
+    if st.button("🔗 Generate Authentication URL", type="primary"):
         try:
             flow = Flow.from_client_config(CLIENT_CONFIG, SCOPES)
-            flow.redirect_uri = "http://localhost:8501"
+            flow.redirect_uri = get_redirect_uri()
             
-            auth_url, _ = flow.authorization_url(prompt='consent')
-            st.markdown(f"[Click here to authorize access to GSC]({auth_url})")
+            # Use out-of-band flow for better compatibility
+            if get_redirect_uri() == "urn:ietf:wg:oauth:2.0:oob":
+                auth_url, _ = flow.authorization_url(
+                    prompt='consent',
+                    access_type='offline',
+                    include_granted_scopes='true'
+                )
+            else:
+                auth_url, _ = flow.authorization_url(prompt='consent')
             
-            auth_code = st.text_input("Paste the authorization code here:")
+            st.markdown(f"""
+            ### Step 1: Authorize Access
+            Click the link below to authorize access to your Google Search Console:
             
-            if auth_code:
-                flow.fetch_token(code=auth_code)
+            **[🔗 Click here to authorize GSC access]({auth_url})**
+            
+            ### Step 2: Copy Authorization Code
+            After authorizing, Google will show you an authorization code. Copy it and paste it below.
+            """)
+            
+            st.session_state['oauth_flow'] = flow
+            
+        except Exception as e:
+            st.error(f"Error generating auth URL: {str(e)}")
+    
+    # Show input for authorization code if flow is initialized
+    if 'oauth_flow' in st.session_state:
+        auth_code = st.text_input(
+            "📋 Paste the authorization code here:",
+            placeholder="Paste the code from Google here...",
+            help="After clicking the authorization link, Google will provide a code. Copy and paste it here."
+        )
+        
+        if auth_code and st.button("✅ Complete Authentication"):
+            try:
+                flow = st.session_state['oauth_flow']
+                flow.fetch_token(code=auth_code.strip())
+                
+                # Store credentials
                 st.session_state['gsc_credentials'] = json.loads(flow.credentials.to_json())
+                
+                # Clean up
+                del st.session_state['oauth_flow']
+                
                 st.success("✅ Successfully connected to Google Search Console!")
+                st.balloons()
+                time.sleep(2)
                 st.rerun()
                 
-        except Exception as e:
-            st.error(f"Authentication error: {str(e)}")
+            except Exception as e:
+                st.error(f"Authentication error: {str(e)}")
+                st.error("Please make sure you copied the complete authorization code.")
     
     return None
 
