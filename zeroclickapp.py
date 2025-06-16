@@ -3,14 +3,13 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow  # Corrected import for OAuth
+from google_auth_oauthlib.flow import InstalledAppFlow
 from datetime import datetime, timedelta
-import time
 import json
+import time
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
@@ -76,7 +75,7 @@ def authenticate_gsc():
     
     if st.button("🔗 Generate Authentication URL", type="primary"):
         try:
-            flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)  # Corrected import here
+            flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)
             flow.redirect_uri = 'urn:ietf:wg:oauth:2.0:oob'
             auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline')
             st.markdown(f"### Step 1: Authorize Access [🔗 Click here]({auth_url})")
@@ -184,7 +183,9 @@ def create_visualizations(df, zero_click_df):
                      hover_data=['Query'],
                      title='CTR vs Impressions',
                      labels={'CTR': 'Click-Through Rate (%)', 'Impressions': 'Impressions'})
-    fig1.update_xaxis(type="log")
+    
+    if fig1 is not None:  # Ensure fig1 is a valid Plotly figure
+        fig1.update_xaxis(type="log")
     
     # Zero-click score distribution
     fig2 = px.histogram(df, x='Zero_Click_Score', 
@@ -220,36 +221,9 @@ def main():
     service = get_gsc_service()
     
     if service is None:
-        st.info("👆 Please authenticate with Google Search Console to get started")
         authenticate_gsc()
-        
-        # Instructions
-        with st.expander("📋 Setup Instructions"):
-            st.markdown("""
-            ### How to set up GSC API access:
-            
-            1. **Create a Google Cloud Project**:
-               - Go to [Google Cloud Console](https://console.cloud.google.com/)
-               - Create a new project or select existing one
-            
-            2. **Enable Search Console API**:
-               - Go to APIs & Services → Library
-               - Search for "Google Search Console API"
-               - Click "Enable"
-            
-            3. **Create OAuth 2.0 Credentials**:
-               - Go to APIs & Services → Credentials
-               - Click "Create Credentials" → "OAuth 2.0 Client ID"
-               - **Important**: Choose "Desktop Application" (NOT Web Application)
-               - Copy Client ID and Client Secret
-            
-            4. **Configure Streamlit Secrets** (recommended):
-               - Add your `client_id` and `client_secret` to Streamlit secrets config file for convenience.
-            """)
-        return
-    
-    # If authenticated, let the user select a site
-    if 'gsc_credentials' in st.session_state:
+    else:
+        # Let the user pick a GSC site
         site_url = st.selectbox("Select your GSC Property", get_gsc_sites(service))
         start_date = st.date_input("Start Date", datetime.today() - timedelta(days=30))
         end_date = st.date_input("End Date", datetime.today())
@@ -267,8 +241,11 @@ def main():
         # Create visualizations
         fig1, fig2, fig3 = create_visualizations(df, zero_click_df)
         
-        st.plotly_chart(fig1, use_container_width=True)
-        st.plotly_chart(fig2, use_container_width=True)
+        if fig1:
+            st.plotly_chart(fig1, use_container_width=True)
+        
+        if fig2:
+            st.plotly_chart(fig2, use_container_width=True)
         
         if fig3:
             st.plotly_chart(fig3, use_container_width=True)
