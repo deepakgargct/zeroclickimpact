@@ -212,19 +212,19 @@ def create_visualizations(df, zero_click_df):
     """Create visualizations for the data"""
     if df.empty:
         return None, None, None
-    
+
     # CTR vs Impressions scatter plot
-    fig1 = px.scatter(df, x='Impressions', y='CTR', 
+    fig1 = px.scatter(df, x='Impressions', y='CTR',
                      hover_data=['Query'],
                      title='CTR vs Impressions',
                      labels={'CTR': 'Click-Through Rate (%)', 'Impressions': 'Impressions'})
-    fig1.update_xaxis(type="log")
-    
+    fig1.update_xaxes(type="log")  # <-- FIXED: use update_xaxes instead of update_xaxis
+
     # Zero-click score distribution
-    fig2 = px.histogram(df, x='Zero_Click_Score', 
+    fig2 = px.histogram(df, x='Zero_Click_Score',
                        title='Distribution of Zero-Click Scores',
                        labels={'Zero_Click_Score': 'Zero-Click Score (%)'})
-    
+
     # Top zero-click keywords
     if not zero_click_df.empty:
         top_zero_click = zero_click_df.head(20)
@@ -235,7 +235,7 @@ def create_visualizations(df, zero_click_df):
         fig3.update_layout(height=600)
     else:
         fig3 = None
-    
+
     return fig1, fig2, fig3
 
 def main():
