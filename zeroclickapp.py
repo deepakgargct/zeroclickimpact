@@ -54,6 +54,28 @@ def get_gsc_service():
         st.error(f"Error initializing GSC service: {str(e)}")
         return None
 
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def get_gsc_sites_cached(_service, cache_key):
+    """Cached version of get_gsc_sites to prevent unnecessary API calls"""
+    try:
+        if 'gsc_credentials' in st.session_state:
+            creds = Credentials.from_authorized_user_info(
+                st.session_state['gsc_credentials'], SCOPES)
+            service = build('searchconsole', 'v1', credentials=creds)
+            sites = service.sites().list().execute()
+            return [site['siteUrl'] for site in sites.get('siteEntry', [])]
+    except Exception as e:
+        st.error(f"Error fetching sites: {str(e)}")
+        return []
+
+def get_gsc_sites(service):
+    """Wrapper function that uses caching"""
+    if service and 'gsc_credentials' in st.session_state:
+        # Use a simple string as cache key since we can't cache the service object
+        cache_key = "gsc_sites"
+        return get_gsc_sites_cached(service, cache_key)
+    return []
+
 def authenticate_gsc():
     if not setup_oauth_config():
         return None
@@ -102,14 +124,6 @@ def authenticate_gsc():
                 else:
                     st.error("Please make sure you copied the complete authorization code.")
     return None
-
-def get_gsc_sites(service):
-    try:
-        sites = service.sites().list().execute()
-        return [site['siteUrl'] for site in sites.get('siteEntry', [])]
-    except Exception as e:
-        st.error(f"Error fetching sites: {str(e)}")
-        return []
 
 def fetch_gsc_data(service, site_url, start_date, end_date, dimensions=['query']):
     try:
@@ -254,6 +268,7 @@ def main():
                                                   step=1.0,
                                                   help="Minimum zero-click score to be considered")
 
+    # FIXED GSC Property Selection Section
     st.subheader("🌐 Select GSC Property")
     sites = get_gsc_sites(service)
 
@@ -261,15 +276,36 @@ def main():
         st.error("No GSC properties found. Make sure you have access to at least one property.")
         return
 
-    if (
-        "selected_site" not in st.session_state
-        or st.session_state.selected_site not in sites
-    ):
+    # Initialize the selected site only if it doesn't exist or is invalid
+    if "selected_site" not in st.session_state or st.session_state.selected_site not in sites:
         st.session_state.selected_site = sites[0] if sites else None
 
-    selected_site = st.selectbox(
-        "Choose a property:", sites, key="selected_site"
-    )
+    # Find the index of the currently selected site for the selectbox
+    try:
+        default_index = sites.index(st.session_state.selected_site) if st.session_state.selected_site in sites else 0
+    except (ValueError, TypeError):
+        default_index = 0
+
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        selected_site = st.selectbox(
+            "Choose a property:", 
+            sites, 
+            index=default_index,
+            help="Select your GSC property. This selection will be maintained during your session."
+        )
+
+    with col2:
+        if st.session_state.get('selected_site') == selected_site:
+            st.success("✅ Property locked")
+        else:
+            st.info("🔄 Selection changed")
+
+    # Update session state when selection changes
+    if selected_site != st.session_state.get('selected_site'):
+        st.session_state.selected_site = selected_site
+        st.rerun()  # Refresh to show the updated status
 
     st.subheader("📅 Select Date Range")
     col1, col2 = st.columns(2)
@@ -366,7 +402,10 @@ def main():
             del st.session_state['gsc_credentials']
         if 'gsc_data' in st.session_state:
             del st.session_state['gsc_data']
+        if 'selected_site' in st.session_state:
+            del st.session_state['selected_site']
         st.session_state['authenticated'] = False
+        st.cache_data.clear()  # Clear cache when disconnecting
         st.rerun()
 
 if __name__ == "__main__":
