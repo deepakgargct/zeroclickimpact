@@ -6,11 +6,10 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
-import json
 from datetime import datetime, timedelta
 import time
+import json
 
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
@@ -211,7 +210,7 @@ def main():
         authenticate_gsc()
         return
     
-    # GSC Property Selection with memory
+    # GSC Property Selection with session_state persistence
     st.subheader("🌐 Select GSC Property")
     sites = get_gsc_sites(service)
     
@@ -219,12 +218,11 @@ def main():
         st.error("No GSC properties found. Make sure you have access to at least one property.")
         return
     
-    # Use selected site from session state, if available
+    # Default to previously selected site if available
     selected_site = st.selectbox("Choose a property:", sites, index=sites.index(st.session_state.get('selected_site', sites[0])))
     st.session_state['selected_site'] = selected_site
-
-    # Date range selection
-    st.subheader("📅 Select Date Range")
+    
+    # Date Selection
     col1, col2 = st.columns(2)
     
     with col1:
@@ -233,7 +231,7 @@ def main():
     with col2:
         end_date = st.date_input("End Date", value=datetime.now())
     
-    # Fetch data
+    # Fetch and process data
     df = fetch_gsc_data(service, selected_site, start_date, end_date)
     df = calculate_zero_click_metrics(df)
     
