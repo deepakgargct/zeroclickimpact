@@ -218,7 +218,7 @@ def create_visualizations(df, zero_click_df):
                      hover_data=['Query'],
                      title='CTR vs Impressions',
                      labels={'CTR': 'Click-Through Rate (%)', 'Impressions': 'Impressions'})
-    fig1.update_xaxes(type="log")  # <-- FIXED: use update_xaxes instead of update_xaxis
+    fig1.update_xaxes(type="log")
 
     # Zero-click score distribution
     fig2 = px.histogram(df, x='Zero_Click_Score',
@@ -320,23 +320,23 @@ def main():
                                                   help="Minimum zero-click score to be considered")
     
     # Site selection
-st.subheader("🌐 Select GSC Property")
-sites = get_gsc_sites(service)
+    st.subheader("🌐 Select GSC Property")
+    sites = get_gsc_sites(service)
 
-if not sites:
-    st.error("No GSC properties found. Make sure you have access to at least one property.")
-    return
+    if not sites:
+        st.error("No GSC properties found. Make sure you have access to at least one property.")
+        return
 
-# Maintain selected site across reruns, and handle dynamic changes in the site list
-if (
-    "selected_site" not in st.session_state
-    or st.session_state.selected_site not in sites
-):
-    st.session_state.selected_site = sites[0] if sites else None
+    # Maintain selected site across reruns, and handle dynamic changes in the site list
+    if (
+        "selected_site" not in st.session_state
+        or st.session_state.selected_site not in sites
+    ):
+        st.session_state.selected_site = sites[0] if sites else None
 
-selected_site = st.selectbox(
-    "Choose a property:", sites, key="selected_site"
-)
+    selected_site = st.selectbox(
+        "Choose a property:", sites, key="selected_site"
+    )
     
     # Date range selection
     st.subheader("📅 Select Date Range")
