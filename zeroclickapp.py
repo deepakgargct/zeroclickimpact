@@ -103,8 +103,7 @@ def authenticate_gsc():
                     st.error("Please make sure you copied the complete authorization code.")
     return None
 
-@st.cache_data(show_spinner="Loading GSC properties...")
-def get_gsc_sites_cached(service):
+def get_gsc_sites(service):
     try:
         sites = service.sites().list().execute()
         return [site['siteUrl'] for site in sites.get('siteEntry', [])]
@@ -256,13 +255,12 @@ def main():
                                                   help="Minimum zero-click score to be considered")
 
     st.subheader("🌐 Select GSC Property")
-    sites = get_gsc_sites_cached(service)
+    sites = get_gsc_sites(service)
 
     if not sites:
         st.error("No GSC properties found. Make sure you have access to at least one property.")
         return
 
-    # Maintain selected site across reruns and property list changes
     if (
         "selected_site" not in st.session_state
         or st.session_state.selected_site not in sites
